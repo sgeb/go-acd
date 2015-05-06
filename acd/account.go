@@ -63,3 +63,36 @@ func (s *AccountService) GetQuota() (*AccountQuota, *http.Response, error) {
 
 	return accountQuota, resp, err
 }
+
+// AccountUsage represents information about the account usage.
+type AccountUsage struct {
+	LastCalculated *time.Time     `json:"lastCalculated"`
+	Other          *CategoryUsage `json:"other"`
+	Doc            *CategoryUsage `json:"doc"`
+	Photo          *CategoryUsage `json:"photo"`
+	Video          *CategoryUsage `json:"video"`
+}
+type CategoryUsage struct {
+	Total    *UsageNumbers `json:"total"`
+	Billable *UsageNumbers `json:"billable"`
+}
+type UsageNumbers struct {
+	Bytes *uint64 `json:"bytes"`
+	Count *uint64 `json:"count"`
+}
+
+// Gets Account Usage information broken down by content category.
+func (s *AccountService) GetUsage() (*AccountUsage, *http.Response, error) {
+	req, err := s.client.NewRequest("GET", "account/usage", nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	accountUsage := new(AccountUsage)
+	resp, err := s.client.Do(req, accountUsage)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return accountUsage, resp, err
+}
