@@ -22,7 +22,7 @@ const (
 // A Client manages communication with the Amazon Cloud Drive API.
 type Client struct {
 	// HTTP client used to communicate with the API.
-	client *http.Client
+	httpClient *http.Client
 
 	// Base URL for API requests. Defaults to the public Amazon Cloud Drive API.
 	// BaseURL should always be specified with a trailing slash.
@@ -45,7 +45,7 @@ func NewClient(httpClient *http.Client) *Client {
 	}
 	baseURL, _ := url.Parse(defaultBaseURL)
 
-	c := &Client{client: httpClient, BaseURL: baseURL, UserAgent: userAgent}
+	c := &Client{httpClient: httpClient, BaseURL: baseURL, UserAgent: userAgent}
 	c.Account = &AccountService{client: c}
 	return c
 }
@@ -90,7 +90,7 @@ func (c *Client) NewRequest(method, urlStr string, body interface{}) (*http.Requ
 // interface, the raw response body will be written to v, without attempting to
 // first decode it.
 func (c *Client) Do(req *http.Request, v interface{}) (*http.Response, error) {
-	resp, err := c.client.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
