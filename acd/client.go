@@ -14,9 +14,9 @@ import (
 )
 
 const (
-	libraryVersion = "0.1"
+	LibraryVersion = "0.1"
 	defaultBaseURL = "https://drive.amazonaws.com/drive/v1/"
-	userAgent      = "go-acd/" + libraryVersion
+	userAgent      = "go-acd/" + LibraryVersion
 )
 
 // A Client manages communication with the Amazon Cloud Drive API.
