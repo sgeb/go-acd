@@ -21,3 +21,21 @@ func TestAccount_getInfo(t *testing.T) {
 	assert.Equal(t, "ACTIVE", *info.Status)
 	assert.Equal(t, "1.0.0", *info.TermsOfUse)
 }
+
+func TestAccount_getQuota(t *testing.T) {
+	r := *NewMockResponseOkString(`
+{
+"quota": 5368709120,
+"lastCalculated": "2014-08-13T23:01:47.479Z",
+"available": 4069088896
+}
+	`)
+	c := NewMockClient(r)
+
+	quota, _, err := c.Account.GetQuota()
+
+	assert.NoError(t, err)
+	assert.Equal(t, "2014-08-13 23:01:47.479 +0000 UTC", quota.LastCalculated.String())
+	assert.Equal(t, uint64(5368709120), *quota.Quota)
+	assert.Equal(t, uint64(4069088896), *quota.Available)
+}
