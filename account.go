@@ -32,7 +32,7 @@ func (s *AccountService) GetInfo() (*AccountInfo, *http.Response, error) {
 		return nil, nil, err
 	}
 
-	accountInfo := new(AccountInfo)
+	accountInfo := &AccountInfo{}
 	resp, err := s.client.Do(req, accountInfo)
 	if err != nil {
 		return nil, resp, err
@@ -55,7 +55,7 @@ func (s *AccountService) GetQuota() (*AccountQuota, *http.Response, error) {
 		return nil, nil, err
 	}
 
-	accountQuota := new(AccountQuota)
+	accountQuota := &AccountQuota{}
 	resp, err := s.client.Do(req, accountQuota)
 	if err != nil {
 		return nil, resp, err
@@ -88,7 +88,7 @@ func (s *AccountService) GetUsage() (*AccountUsage, *http.Response, error) {
 		return nil, nil, err
 	}
 
-	accountUsage := new(AccountUsage)
+	accountUsage := &AccountUsage{}
 	resp, err := s.client.Do(req, accountUsage)
 	if err != nil {
 		return nil, resp, err

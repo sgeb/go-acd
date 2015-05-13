@@ -65,7 +65,7 @@ func (c *Client) NewRequest(method, urlStr string, body interface{}) (*http.Requ
 
 	var buf io.ReadWriter
 	if body != nil {
-		buf = new(bytes.Buffer)
+		buf = &bytes.Buffer{}
 		err := json.NewEncoder(buf).Encode(body)
 		if err != nil {
 			return nil, err
