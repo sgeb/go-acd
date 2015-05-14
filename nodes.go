@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"reflect"
 
+	"errors"
 	"github.com/google/go-querystring/query"
 )
 
@@ -28,6 +29,10 @@ func (s *NodesService) GetRoot() (*Folder, *http.Response, error) {
 	roots, resp, err := s.GetNodes(opts)
 	if err != nil {
 		return nil, resp, err
+	}
+
+	if len(roots) < 1 {
+		return nil, resp, errors.New("No root found")
 	}
 
 	return &Folder{&roots[0]}, resp, nil
@@ -158,6 +163,27 @@ func (f *Folder) GetAllChildren(opts *NodeListOptions) ([]Node, *http.Response, 
 func (f *Folder) GetChildren(opts *NodeListOptions) ([]Node, *http.Response, error) {
 	url := fmt.Sprintf("nodes/%s/children", *f.Id)
 	return f.service.listNodes(url, opts)
+}
+
+// Gets the subfolder by name. It is an error if not exactly one subfolder is found.
+func (f *Folder) GetSubfolder(name string) (*Folder, *http.Response, error) {
+	filter := "kind:FOLDER AND parents:" + *f.Id + " AND name:" + name
+	opts := &NodeListOptions{Filters: filter}
+
+	folders, resp, err := f.service.GetNodes(opts)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	if len(folders) < 1 {
+		return nil, resp, errors.New(fmt.Sprintf("No subfolder '%s' found", name))
+	}
+	if len(folders) > 1 {
+		return nil, resp, errors.New(fmt.Sprintf("Too many subfolders '%s' found (%v)",
+			name, len(folders)))
+	}
+
+	return &Folder{&folders[0]}, resp, nil
 }
 
 // NodeListOptions holds the options when getting a list of nodes, such as the filter,
