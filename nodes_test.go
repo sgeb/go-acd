@@ -11,6 +11,42 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestNode_getRoot(t *testing.T) {
+	r := *NewMockResponseOkString(`
+{
+	"count":1,
+	"data":[
+		{
+			"isRoot":true,
+			"eTagResponse":"LMel82iwbNk",
+			"id":"3ohaT2SSQWOecmP0GSWv6g",
+			"kind":"FOLDER",
+			"version":156,
+			"labels":[
+
+			],
+			"createdDate":"2014-04-08T20:58:58.011Z",
+			"createdBy":"CloudDriveFiles",
+			"restricted":false,
+			"modifiedDate":"2015-05-03T16:12:35.394Z",
+			"isShared":false,
+			"parents":[
+
+			],
+			"status":"AVAILABLE"
+		}
+	]
+}
+`)
+	c := NewMockClient(r)
+
+	root, _, err := c.Nodes.GetRoot()
+
+	assert.NoError(t, err)
+	assert.Equal(t, "3ohaT2SSQWOecmP0GSWv6g", *root.Id)
+	assert.Nil(t, root.Name)
+}
+
 func TestNode_getNodes(t *testing.T) {
 	r := *NewMockResponseOkString(`
 {
@@ -93,7 +129,7 @@ func TestNode_getNodes(t *testing.T) {
 	nodes, _, err := c.Nodes.GetNodes(opts)
 
 	assert.NoError(t, err)
-	assert.Equal(t, "kgkbpodpt6", opts.NextPageToken)
+	assert.Equal(t, "kgkbpodpt6", opts.StartToken)
 	assert.Equal(t, 2, len(nodes))
 
 	assert.Equal(t, "eRkZ6YMuX5W3VqV3Ia7_lf", *nodes[0].Id)
