@@ -166,24 +166,45 @@ func (f *Folder) GetChildren(opts *NodeListOptions) ([]Node, *http.Response, err
 }
 
 // Gets the subfolder by name. It is an error if not exactly one subfolder is found.
-func (f *Folder) GetSubfolder(name string) (*Folder, *http.Response, error) {
+func (f *Folder) GetFolder(name string) (*Folder, *http.Response, error) {
 	filter := "kind:FOLDER AND parents:" + *f.Id + " AND name:" + name
 	opts := &NodeListOptions{Filters: filter}
 
-	folders, resp, err := f.service.GetNodes(opts)
+	nodes, resp, err := f.service.GetNodes(opts)
 	if err != nil {
 		return nil, resp, err
 	}
 
-	if len(folders) < 1 {
-		return nil, resp, errors.New(fmt.Sprintf("No subfolder '%s' found", name))
+	if len(nodes) < 1 {
+		return nil, resp, errors.New(fmt.Sprintf("No folder '%s' found", name))
 	}
-	if len(folders) > 1 {
-		return nil, resp, errors.New(fmt.Sprintf("Too many subfolders '%s' found (%v)",
-			name, len(folders)))
+	if len(nodes) > 1 {
+		return nil, resp, errors.New(fmt.Sprintf("Too many folders '%s' found (%v)",
+			name, len(nodes)))
 	}
 
-	return &Folder{&folders[0]}, resp, nil
+	return &Folder{&nodes[0]}, resp, nil
+}
+
+// Gets the file by name. It is an error if not exactly one file is found.
+func (f *Folder) GetFile(name string) (*File, *http.Response, error) {
+	filter := "kind:FILE AND parents:" + *f.Id + " AND name:" + name
+	opts := &NodeListOptions{Filters: filter}
+
+	nodes, resp, err := f.service.GetNodes(opts)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	if len(nodes) < 1 {
+		return nil, resp, errors.New(fmt.Sprintf("No file '%s' found", name))
+	}
+	if len(nodes) > 1 {
+		return nil, resp, errors.New(fmt.Sprintf("Too many files '%s' found (%v)",
+			name, len(nodes)))
+	}
+
+	return &File{&nodes[0]}, resp, nil
 }
 
 // NodeListOptions holds the options when getting a list of nodes, such as the filter,
