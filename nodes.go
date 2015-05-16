@@ -117,10 +117,12 @@ type nodeListInternal struct {
 // and folders, in a parent-child relationship. A node contains only metadata
 // (e.g. folder) or it contains metadata and content (e.g. file).
 type Node struct {
-	Id   *string `json:"id"`
-	Name *string `json:"name"`
-	Kind *string `json:"kind"`
-
+	Id                *string `json:"id"`
+	Name              *string `json:"name"`
+	Kind              *string `json:"kind"`
+	ContentProperties *struct {
+		Size *uint64 `json:"size"`
+	} `json:"contentProperties"`
 	service *NodesService
 }
 
