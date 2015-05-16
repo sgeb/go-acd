@@ -99,9 +99,8 @@ func (s *NodesService) listNodes(url string, opts *NodeListOptions) ([]*Node, *h
 	}
 
 	nodes := nodeList.Data
-	// iterate over index since iterating over value would create a copy
-	for i := range nodes {
-		nodes[i].service = s
+	for _, node := range nodes {
+		node.service = s
 	}
 
 	return nodes, resp, nil
