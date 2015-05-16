@@ -35,26 +35,26 @@ func (s *NodesService) GetRoot() (*Folder, *http.Response, error) {
 		return nil, resp, errors.New("No root found")
 	}
 
-	return &Folder{&roots[0]}, resp, nil
+	return &Folder{roots[0]}, resp, nil
 }
 
 // Gets the list of all nodes.
-func (s *NodesService) GetAllNodes(opts *NodeListOptions) ([]Node, *http.Response, error) {
+func (s *NodesService) GetAllNodes(opts *NodeListOptions) ([]*Node, *http.Response, error) {
 	return s.listAllNodes("nodes", opts)
 }
 
 // Gets a list of nodes, up until the limit (either default or the one set in opts).
-func (s *NodesService) GetNodes(opts *NodeListOptions) ([]Node, *http.Response, error) {
+func (s *NodesService) GetNodes(opts *NodeListOptions) ([]*Node, *http.Response, error) {
 	return s.listNodes("nodes", opts)
 }
 
-func (s *NodesService) listAllNodes(url string, opts *NodeListOptions) ([]Node, *http.Response, error) {
+func (s *NodesService) listAllNodes(url string, opts *NodeListOptions) ([]*Node, *http.Response, error) {
 	// Need opts to maintain state (NodeListOptions.reachedEnd)
 	if opts == nil {
 		opts = &NodeListOptions{}
 	}
 
-	result := make([]Node, 0, 200)
+	result := make([]*Node, 0, 200)
 
 	for {
 		nodes, resp, err := s.listNodes(url, opts)
@@ -71,7 +71,7 @@ func (s *NodesService) listAllNodes(url string, opts *NodeListOptions) ([]Node, 
 	return result, nil, nil
 }
 
-func (s *NodesService) listNodes(url string, opts *NodeListOptions) ([]Node, *http.Response, error) {
+func (s *NodesService) listNodes(url string, opts *NodeListOptions) ([]*Node, *http.Response, error) {
 	if opts.reachedEnd {
 		return nil, nil, nil
 	}
@@ -110,7 +110,7 @@ func (s *NodesService) listNodes(url string, opts *NodeListOptions) ([]Node, *ht
 type nodeListInternal struct {
 	Count     *uint64 `json:"count"`
 	NextToken *string `json:"nextToken"`
-	Data      []Node  `json:"data"`
+	Data      []*Node `json:"data"`
 }
 
 // Node represents a digital asset on the Amazon Cloud Drive, including files
@@ -154,41 +154,52 @@ type Folder struct {
 }
 
 // Gets the list of all children.
-func (f *Folder) GetAllChildren(opts *NodeListOptions) ([]Node, *http.Response, error) {
+func (f *Folder) GetAllChildren(opts *NodeListOptions) ([]*Node, *http.Response, error) {
 	url := fmt.Sprintf("nodes/%s/children", *f.Id)
 	return f.service.listAllNodes(url, opts)
 }
 
 // Gets a list of children, up until the limit (either default or the one set in opts).
-func (f *Folder) GetChildren(opts *NodeListOptions) ([]Node, *http.Response, error) {
+func (f *Folder) GetChildren(opts *NodeListOptions) ([]*Node, *http.Response, error) {
 	url := fmt.Sprintf("nodes/%s/children", *f.Id)
 	return f.service.listNodes(url, opts)
 }
 
 // Gets the subfolder by name. It is an error if not exactly one subfolder is found.
 func (f *Folder) GetFolder(name string) (*Folder, *http.Response, error) {
-	filter := "kind:FOLDER AND parents:" + *f.Id + " AND name:" + name
-	opts := &NodeListOptions{Filters: filter}
-
-	nodes, resp, err := f.service.GetNodes(opts)
+	n, resp, err := f.GetNode(name)
 	if err != nil {
 		return nil, resp, err
 	}
 
-	if len(nodes) < 1 {
-		return nil, resp, errors.New(fmt.Sprintf("No folder '%s' found", name))
-	}
-	if len(nodes) > 1 {
-		return nil, resp, errors.New(fmt.Sprintf("Too many folders '%s' found (%v)",
-			name, len(nodes)))
+	res, ok := n.Typed().(*Folder)
+	if !ok {
+		err := errors.New(fmt.Sprintf("Node '%s' is not a folder", name))
+		return nil, resp, err
 	}
 
-	return &Folder{&nodes[0]}, resp, nil
+	return res, resp, nil
 }
 
 // Gets the file by name. It is an error if not exactly one file is found.
 func (f *Folder) GetFile(name string) (*File, *http.Response, error) {
-	filter := "kind:FILE AND parents:" + *f.Id + " AND name:" + name
+	n, resp, err := f.GetNode(name)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	res, ok := n.Typed().(*File)
+	if !ok {
+		err := errors.New(fmt.Sprintf("Node '%s' is not a file", name))
+		return nil, resp, err
+	}
+
+	return res, resp, nil
+}
+
+// Gets the node by name. It is an error if not exactly one node is found.
+func (f *Folder) GetNode(name string) (*Node, *http.Response, error) {
+	filter := "parents:" + *f.Id + " AND name:" + name
 	opts := &NodeListOptions{Filters: filter}
 
 	nodes, resp, err := f.service.GetNodes(opts)
@@ -197,14 +208,47 @@ func (f *Folder) GetFile(name string) (*File, *http.Response, error) {
 	}
 
 	if len(nodes) < 1 {
-		return nil, resp, errors.New(fmt.Sprintf("No file '%s' found", name))
+		err := errors.New(fmt.Sprintf("No node '%s' found", name))
+		return nil, resp, err
 	}
 	if len(nodes) > 1 {
-		return nil, resp, errors.New(fmt.Sprintf("Too many files '%s' found (%v)",
-			name, len(nodes)))
+		err := errors.New(fmt.Sprintf("Too many nodes '%s' found (%v)", name, len(nodes)))
+		return nil, resp, err
 	}
 
-	return &File{&nodes[0]}, resp, nil
+	return nodes[0], resp, nil
+}
+
+// WalkNodes walks the given node hierarchy, getting each node along the way, and returns
+// the deepest node. If an error occurs, returns the furthest successful node and the list
+// of HTTP responses.
+func (f *Folder) WalkNodes(names ...string) (*Node, []*http.Response, error) {
+	resps := make([]*http.Response, 0, len(names))
+
+	if len(names) == 0 {
+		return f.Node, resps, nil
+	}
+
+	// process each node except the last one
+	fp := f
+	for _, name := range names[:len(names)-1] {
+		fn, resp, err := fp.GetFolder(name)
+		resps = append(resps, resp)
+		if err != nil {
+			return fp.Node, resps, err
+		}
+
+		fp = fn
+	}
+
+	// process the last node
+	nl, resp, err := fp.GetNode(names[len(names)-1])
+	resps = append(resps, resp)
+	if err != nil {
+		return fp.Node, resps, err
+	}
+
+	return nl, resps, nil
 }
 
 // NodeListOptions holds the options when getting a list of nodes, such as the filter,
