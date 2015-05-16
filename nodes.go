@@ -124,23 +124,24 @@ type Node struct {
 	service *NodesService
 }
 
-func (n *Node) Typed() interface{} {
-	var result interface{}
+func (n *Node) IsFile() bool {
+	return n.Kind != nil && *n.Kind == "FILE"
+}
 
-	if n.Kind == nil {
-		result = n
-	} else {
-		switch *n.Kind {
-		case "FOLDER":
-			result = &Folder{n}
-		case "FILE":
-			result = &File{n}
-		default:
-			result = n
-		}
+func (n *Node) IsFolder() bool {
+	return n.Kind != nil && *n.Kind == "FOLDER"
+}
+
+func (n *Node) Typed() interface{} {
+	if n.IsFile() {
+		return &File{n}
 	}
 
-	return result
+	if n.IsFolder() {
+		return &Folder{n}
+	}
+
+	return n
 }
 
 // Represents a file and contains only metadata.
