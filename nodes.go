@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"reflect"
 
 	"github.com/google/go-querystring/query"
@@ -179,6 +180,26 @@ func (n *Node) GetMetadata() (string, error) {
 // File represents a file on the Amazon Cloud Drive.
 type File struct {
 	*Node
+}
+
+// Download fetches the content of file f and stores it into the file pointed
+// to by path. Errors if the file at path already exists. Does not create the
+// intermediate directories in path.
+func (f *File) Download(path string) (*http.Response, error) {
+	url := fmt.Sprintf("nodes/%s/content", *f.Id)
+	req, err := f.service.client.NewContentRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0666)
+	if err != nil {
+		return nil, err
+	}
+	defer out.Close()
+
+	resp, err := f.service.client.Do(req, out)
+	return resp, err
 }
 
 // Folder represents a folder on the Amazon Cloud Drive.
