@@ -16,6 +16,7 @@ import (
 const (
 	LibraryVersion     = "0.1"
 	defaultMetadataURL = "https://drive.amazonaws.com/drive/v1/"
+	defaultContentURL  = "https://content-na.drive.amazonaws.com/cdproxy/"
 	userAgent          = "go-acd/" + LibraryVersion
 )
 
@@ -27,6 +28,10 @@ type Client struct {
 	// Metadata URL for API requests. Defaults to the public Amazon Cloud Drive API.
 	// MetadataURL should always be specified with a trailing slash.
 	MetadataURL *url.URL
+
+	// Content URL for API requests. Defaults to the public Amazon Cloud Drive API.
+	// ContentURL should always be specified with a trailing slash.
+	ContentURL *url.URL
 
 	// User agent used when communicating with the API.
 	UserAgent string
@@ -44,9 +49,15 @@ func NewClient(httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
-	baseURL, _ := url.Parse(defaultMetadataURL)
+	metadataURL, _ := url.Parse(defaultMetadataURL)
+	contentURL, _ := url.Parse(defaultContentURL)
 
-	c := &Client{httpClient: httpClient, MetadataURL: baseURL, UserAgent: userAgent}
+	c := &Client{
+		httpClient:  httpClient,
+		MetadataURL: metadataURL,
+		ContentURL:  contentURL,
+		UserAgent:   userAgent,
+	}
 
 	c.Account = &AccountService{client: c}
 	c.Nodes = &NodesService{client: c}
@@ -54,13 +65,22 @@ func NewClient(httpClient *http.Client) *Client {
 	return c
 }
 
-// NewMetadataRequest creates an API request. A relative URL can be provided in urlStr,
-// in which case it is resolved relative to the MetadataURL of the Client.
-// Relative URLs should always be specified without a preceding slash. If
-// specified, the value pointed to by body is JSON encoded and included as the
-// request body.
+// NewMetadataRequest creates an API request for metadata. A relative URL can be
+// provided in urlStr, in which case it is resolved relative to the MetadataURL
+// of the Client. Relative URLs should always be specified without a preceding
+// slash. If specified, the value pointed to by body is JSON encoded and included
+// as the request body.
 func (c *Client) NewMetadataRequest(method, urlStr string, body interface{}) (*http.Request, error) {
 	return c.newRequest(c.MetadataURL, method, urlStr, body)
+}
+
+// NewContentRequest creates an API request for content. A relative URL can be
+// provided in urlStr, in which case it is resolved relative to the ContentURL
+// of the Client. Relative URLs should always be specified without a preceding
+// slash. If specified, the value pointed to by body is JSON encoded and included
+// as the request body.
+func (c *Client) NewContentRequest(method, urlStr string, body interface{}) (*http.Request, error) {
+	return c.newRequest(c.ContentURL, method, urlStr, body)
 }
 
 // newRequest creates an API request. A relative URL can be provided in urlStr,
