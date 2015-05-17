@@ -232,7 +232,7 @@ func (f *Folder) GetFile(name string) (*File, *http.Response, error) {
 
 // Gets the node by name. It is an error if not exactly one node is found.
 func (f *Folder) GetNode(name string) (*Node, *http.Response, error) {
-	filter := "parents:" + *f.Id + " AND name:" + name
+	filter := fmt.Sprintf("parents:\"%v\" AND name:\"%s\"", *f.Id, name)
 	opts := &NodeListOptions{Filters: filter}
 
 	nodes, resp, err := f.service.GetNodes(opts)
