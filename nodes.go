@@ -83,7 +83,7 @@ func (s *NodesService) listNodes(url string, opts *NodeListOptions) ([]*Node, *h
 		return nil, nil, err
 	}
 
-	req, err := s.client.NewRequest("GET", url, nil)
+	req, err := s.client.NewMetadataRequest("GET", url, nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -155,8 +155,8 @@ func (n *Node) Typed() interface{} {
 
 // GetMetadata return a pretty-printed JSON string of the node's metadata
 func (n *Node) GetMetadata() (string, error) {
-	url := fmt.Sprintf("nodes/%s", *n.Id)
-	req, err := n.service.client.NewRequest("GET", url, nil)
+	url := fmt.Sprintf("nodes/%s?tempLink=true", *n.Id)
+	req, err := n.service.client.NewMetadataRequest("GET", url, nil)
 	if err != nil {
 		return "", err
 	}

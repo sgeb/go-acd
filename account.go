@@ -27,7 +27,7 @@ type AccountInfo struct {
 // Provides information about the current user account like the status and the
 // accepted “Terms Of Use”.
 func (s *AccountService) GetInfo() (*AccountInfo, *http.Response, error) {
-	req, err := s.client.NewRequest("GET", "account/info", nil)
+	req, err := s.client.NewMetadataRequest("GET", "account/info", nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -50,7 +50,7 @@ type AccountQuota struct {
 
 // Gets account quota and storage availability information.
 func (s *AccountService) GetQuota() (*AccountQuota, *http.Response, error) {
-	req, err := s.client.NewRequest("GET", "account/quota", nil)
+	req, err := s.client.NewMetadataRequest("GET", "account/quota", nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -83,7 +83,7 @@ type UsageNumbers struct {
 
 // Gets Account Usage information broken down by content category.
 func (s *AccountService) GetUsage() (*AccountUsage, *http.Response, error) {
-	req, err := s.client.NewRequest("GET", "account/usage", nil)
+	req, err := s.client.NewMetadataRequest("GET", "account/usage", nil)
 	if err != nil {
 		return nil, nil, err
 	}
