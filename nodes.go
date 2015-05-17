@@ -6,12 +6,14 @@
 package acd
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"reflect"
 
-	"errors"
 	"github.com/google/go-querystring/query"
 )
 
@@ -72,7 +74,7 @@ func (s *NodesService) listAllNodes(url string, opts *NodeListOptions) ([]*Node,
 }
 
 func (s *NodesService) listNodes(url string, opts *NodeListOptions) ([]*Node, *http.Response, error) {
-	if opts.reachedEnd {
+	if opts != nil && opts.reachedEnd {
 		return nil, nil, nil
 	}
 
@@ -92,10 +94,12 @@ func (s *NodesService) listNodes(url string, opts *NodeListOptions) ([]*Node, *h
 		return nil, resp, err
 	}
 
-	if nodeList.NextToken != nil {
-		opts.StartToken = *nodeList.NextToken
-	} else {
-		opts.reachedEnd = true
+	if opts != nil {
+		if nodeList.NextToken != nil {
+			opts.StartToken = *nodeList.NextToken
+		} else {
+			opts.reachedEnd = true
+		}
 	}
 
 	nodes := nodeList.Data
@@ -122,17 +126,21 @@ type Node struct {
 	ContentProperties *struct {
 		Size *uint64 `json:"size"`
 	} `json:"contentProperties"`
+
 	service *NodesService
 }
 
+// IsFile returns whether the node represents a file.
 func (n *Node) IsFile() bool {
 	return n.Kind != nil && *n.Kind == "FILE"
 }
 
+// IsFolder returns whether the node represents a folder.
 func (n *Node) IsFolder() bool {
 	return n.Kind != nil && *n.Kind == "FOLDER"
 }
 
+// Typed returns the Node typed as either File or Folder.
 func (n *Node) Typed() interface{} {
 	if n.IsFile() {
 		return &File{n}
@@ -145,12 +153,35 @@ func (n *Node) Typed() interface{} {
 	return n
 }
 
-// Represents a file and contains only metadata.
+// GetMetadata return a pretty-printed JSON string of the node's metadata
+func (n *Node) GetMetadata() (string, error) {
+	url := fmt.Sprintf("nodes/%s", *n.Id)
+	req, err := n.service.client.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", err
+	}
+
+	buf := &bytes.Buffer{}
+	_, err = n.service.client.Do(req, buf)
+	if err != nil {
+		return "", err
+	}
+
+	md := &bytes.Buffer{}
+	err = json.Indent(md, buf.Bytes(), "", "    ")
+	if err != nil {
+		return "", err
+	}
+
+	return md.String(), nil
+}
+
+// File represents a file on the Amazon Cloud Drive.
 type File struct {
 	*Node
 }
 
-// Represents a folder and contains only metadata.
+// Folder represents a folder on the Amazon Cloud Drive.
 type Folder struct {
 	*Node
 }
