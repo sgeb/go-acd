@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	LibraryVersion     = "0.1"
+	LibraryVersion     = "0.1.0"
 	defaultMetadataURL = "https://drive.amazonaws.com/drive/v1/"
 	defaultContentURL  = "https://content-na.drive.amazonaws.com/cdproxy/"
 	userAgent          = "go-acd/" + LibraryVersion
