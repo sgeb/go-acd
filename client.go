@@ -96,16 +96,17 @@ func (c *Client) newRequest(base *url.URL, method, urlStr string, body interface
 
 	u := base.ResolveReference(rel)
 
-	var buf io.ReadWriter
-	if body != nil {
-		buf = &bytes.Buffer{}
+	bodyReader, ok := body.(io.Reader)
+	if !ok && body != nil {
+		buf := &bytes.Buffer{}
 		err := json.NewEncoder(buf).Encode(body)
 		if err != nil {
 			return nil, err
 		}
+		bodyReader = buf
 	}
 
-	req, err := http.NewRequest(method, u.String(), buf)
+	req, err := http.NewRequest(method, u.String(), bodyReader)
 	if err != nil {
 		return nil, err
 	}

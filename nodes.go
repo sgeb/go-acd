@@ -10,9 +10,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"reflect"
 
 	"github.com/google/go-querystring/query"
@@ -303,6 +306,62 @@ func (f *Folder) WalkNodes(names ...string) (*Node, []*http.Response, error) {
 	}
 
 	return nl, resps, nil
+}
+
+// Upload stores the content of file at path as name on the Amazon Cloud Drive.
+// Errors if the file already exists on the drive.
+func (f *Folder) Upload(path, name string) (*File, *http.Response, error) {
+	in, err := os.Open(path)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	bodyReader, bodyWriter := io.Pipe()
+	writer := multipart.NewWriter(bodyWriter)
+	contentType := writer.FormDataContentType()
+
+	errChan := make(chan error, 1)
+	go func() {
+		defer bodyWriter.Close()
+		defer in.Close()
+
+		err = writer.WriteField("metadata", `{"name":"`+name+`","kind":"FILE","parents":["`+*f.Id+`"]}`)
+		if err != nil {
+			errChan <- err
+			return
+		}
+
+		part, err := writer.CreateFormFile("content", filepath.Base(path))
+		if err != nil {
+			errChan <- err
+			return
+		}
+		if _, err := io.Copy(part, in); err != nil {
+			errChan <- err
+			return
+		}
+		errChan <- writer.Close()
+	}()
+
+	req, err := f.service.client.NewContentRequest("POST", "nodes?suppress=deduplication", bodyReader)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	file := &File{&Node{service: f.service}}
+	resp, err := f.service.client.Do(req, file)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	err = <-errChan
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return file, resp, err
 }
 
 // NodeListOptions holds the options when getting a list of nodes, such as the filter,
