@@ -8,7 +8,10 @@ package acd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 )
@@ -131,12 +134,12 @@ func (c *Client) Do(req *http.Request, v interface{}) (*http.Response, error) {
 
 	defer resp.Body.Close()
 
-	//	err = CheckResponse(resp)
-	//	if err != nil {
-	//		// even though there was an error, we still return the response
-	//		// in case the caller wants to inspect it further
-	//		return resp, err
-	//	}
+	err = CheckResponse(resp)
+	if err != nil {
+		// even though there was an error, we still return the response
+		// in case the caller wants to inspect it further
+		return resp, err
+	}
 
 	if v != nil {
 		if w, ok := v.(io.Writer); ok {
@@ -146,4 +149,29 @@ func (c *Client) Do(req *http.Request, v interface{}) (*http.Response, error) {
 		}
 	}
 	return resp, err
+}
+
+// CheckResponse checks the API response for errors, and returns them if
+// present.  A response is considered an error if it has a status code outside
+// the 200 range.
+func CheckResponse(r *http.Response) error {
+	c := r.StatusCode
+	if 200 <= c && c <= 299 {
+		return nil
+	}
+
+	errBody := ""
+	if data, err := ioutil.ReadAll(r.Body); err != nil {
+		errBody = string(data)
+	}
+
+	errMsg := fmt.Sprintf("HTTP code %v, ", c)
+	if errBody == "" {
+		errMsg += "no response body"
+	} else {
+		errMsg += fmt.Sprintf("reponse body: %v", errBody)
+	}
+	errMsg += "\n"
+
+	return errors.New(errMsg)
 }
