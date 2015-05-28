@@ -171,7 +171,6 @@ func CheckResponse(r *http.Response) error {
 	} else {
 		errMsg += fmt.Sprintf("reponse body: %v", errBody)
 	}
-	errMsg += "\n"
 
 	return errors.New(errMsg)
 }
