@@ -125,19 +125,34 @@ func (c *Client) newRequest(base *url.URL, method, urlStr string, body interface
 // JSON decoded and stored in the value pointed to by v, or returned as an
 // error if an API error has occurred. If v implements the io.Writer
 // interface, the raw response body will be written to v, without attempting to
-// first decode it.
+// first decode it. If v is nil then the resp.Body won't be closed - this is
+// your responsibility.
+//
 func (c *Client) Do(req *http.Request, v interface{}) (*http.Response, error) {
+	//buf, _ := httputil.DumpRequest(req, true)
+	//buf, _ := httputil.DumpRequest(req, false)
+	//log.Printf("req = %s", string(buf))
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 
-	defer resp.Body.Close()
+	if v != nil {
+		defer resp.Body.Close()
+	}
+	//buf, _ = httputil.DumpResponse(resp, true)
+	//buf, _ = httputil.DumpResponse(resp, false)
+	//log.Printf("resp = %s", string(buf))
 
 	err = CheckResponse(resp)
 	if err != nil {
 		// even though there was an error, we still return the response
-		// in case the caller wants to inspect it further
+		// in case the caller wants to inspect it further.  We do close the
+		// Body though
+		if v == nil {
+			resp.Body.Close()
+		}
 		return resp, err
 	}
 
@@ -161,11 +176,11 @@ func CheckResponse(r *http.Response) error {
 	}
 
 	errBody := ""
-	if data, err := ioutil.ReadAll(r.Body); err != nil {
+	if data, err := ioutil.ReadAll(r.Body); err == nil {
 		errBody = string(data)
 	}
 
-	errMsg := fmt.Sprintf("HTTP code %v, ", c)
+	errMsg := fmt.Sprintf("HTTP code %v: %q, ", c, r.Status)
 	if errBody == "" {
 		errMsg += "no response body"
 	} else {

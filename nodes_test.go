@@ -138,3 +138,20 @@ func TestNode_getNodes(t *testing.T) {
 	assert.Equal(t, "fooo1", *nodes[1].Id)
 	assert.Equal(t, "foo.zip", *nodes[1].Name)
 }
+
+func TestEscapeForFilter(t *testing.T) {
+	for _, test := range []struct {
+		in   string
+		want string
+	}{
+		{"", ""},
+		{"potato", "potato"},
+		{`potato+sausage`, `potato\+sausage`},
+		{`+ - & | ! ( ) { } [ ] ^ ' " ~ * ? : \`, `\+\ \-\ \&\ \|\ \!\ \(\ \)\ \{\ \}\ \[\ \]\ \^\ \'\ \"\ \~\ \*\ \?\ \:\ \\`},
+	} {
+		got := EscapeForFilter(test.in)
+		if test.want != got {
+			t.Errorf("in(%q): want '%s' got '%s'", test.in, test.want, got)
+		}
+	}
+}
