@@ -15,10 +15,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"reflect"
+	"regexp"
 
 	"github.com/google/go-querystring/query"
+)
+
+var (
+	ErrorNodeNotFound = errors.New("Node not found")
 )
 
 // NodesService provides access to the nodes in the Amazon Cloud Drive API.
@@ -51,7 +55,8 @@ func (s *NodesService) GetAllNodes(opts *NodeListOptions) ([]*Node, *http.Respon
 
 // Gets a list of nodes, up until the limit (either default or the one set in opts).
 func (s *NodesService) GetNodes(opts *NodeListOptions) ([]*Node, *http.Response, error) {
-	return s.listNodes("nodes", opts)
+	nodes, res, err := s.listNodes("nodes", opts)
+	return nodes, res, err
 }
 
 func (s *NodesService) listAllNodes(url string, opts *NodeListOptions) ([]*Node, *http.Response, error) {
@@ -124,14 +129,26 @@ type nodeListInternal struct {
 // and folders, in a parent-child relationship. A node contains only metadata
 // (e.g. folder) or it contains metadata and content (e.g. file).
 type Node struct {
-	Id                *string `json:"id"`
-	Name              *string `json:"name"`
-	Kind              *string `json:"kind"`
+	Id                *string  `json:"id"`
+	Name              *string  `json:"name"`
+	Kind              *string  `json:"kind"`
+	ModifiedDate      *string  `json:"modifiedDate"`
+	Parents           []string `json:"parents"`
+	Status            *string  `json:"status"`
 	ContentProperties *struct {
 		Size *uint64 `json:"size"`
+		Md5  *string `json:"md5"`
 	} `json:"contentProperties"`
 
 	service *NodesService
+}
+
+// NodeFromId constructs a skeleton Node from an Id and a NodeService
+func NodeFromId(Id string, service *NodesService) *Node {
+	return &Node{
+		Id:      &Id,
+		service: service,
+	}
 }
 
 // IsFile returns whether the node represents a file.
@@ -180,9 +197,45 @@ func (n *Node) GetMetadata() (string, error) {
 	return md.String(), nil
 }
 
+// Trash places Node n into the trash.  If the node is a directory it
+// places it and all of its contents into the trash.
+func (n *Node) Trash() (*http.Response, error) {
+	url := fmt.Sprintf("trash/%s", *n.Id)
+	req, err := n.service.client.NewMetadataRequest("PUT", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := n.service.client.Do(req, nil)
+	if err != nil {
+		return resp, err
+	}
+	err = resp.Body.Close()
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+
+}
+
 // File represents a file on the Amazon Cloud Drive.
 type File struct {
 	*Node
+}
+
+// Open the content of the file f for read
+//
+// You must call in.Close() when finished
+func (f *File) Open() (in io.ReadCloser, resp *http.Response, err error) {
+	url := fmt.Sprintf("nodes/%s/content", *f.Id)
+	req, err := f.service.client.NewContentRequest("GET", url, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	resp, err = f.service.client.Do(req, nil)
+	if err != nil {
+		return nil, resp, err
+	}
+	return resp.Body, resp, nil
 }
 
 // Download fetches the content of file f and stores it into the file pointed
@@ -210,6 +263,13 @@ type Folder struct {
 	*Node
 }
 
+// FolderFromId constructs a skeleton Folder from an Id and a NodeService
+func FolderFromId(Id string, service *NodesService) *Folder {
+	return &Folder{
+		Node: NodeFromId(Id, service),
+	}
+}
+
 // Gets the list of all children.
 func (f *Folder) GetAllChildren(opts *NodeListOptions) ([]*Node, *http.Response, error) {
 	url := fmt.Sprintf("nodes/%s/children", *f.Id)
@@ -223,6 +283,8 @@ func (f *Folder) GetChildren(opts *NodeListOptions) ([]*Node, *http.Response, er
 }
 
 // Gets the subfolder by name. It is an error if not exactly one subfolder is found.
+//
+// If it isn't found then it returns the error ErrorNodeNotFound
 func (f *Folder) GetFolder(name string) (*Folder, *http.Response, error) {
 	n, resp, err := f.GetNode(name)
 	if err != nil {
@@ -238,7 +300,39 @@ func (f *Folder) GetFolder(name string) (*Folder, *http.Response, error) {
 	return res, resp, nil
 }
 
+// createNode is a cut down set of parameters for creating nodes
+type createNode struct {
+	Name    string   `json:"name"`
+	Kind    string   `json:"kind"`
+	Parents []string `json:"parents"`
+}
+
+// CreateFolder makes a new folder with the given name.
+//
+// The new Folder is returned
+func (f *Folder) CreateFolder(name string) (*Folder, *http.Response, error) {
+	createFolder := createNode{
+		Name:    name,
+		Kind:    "FOLDER",
+		Parents: []string{*f.Id},
+	}
+	req, err := f.service.client.NewMetadataRequest("POST", "nodes", &createFolder)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	folder := &Folder{&Node{service: f.service}}
+	resp, err := f.service.client.Do(req, folder)
+	if err != nil {
+		return nil, nil, err
+	}
+	return folder, resp, nil
+
+}
+
 // Gets the file by name. It is an error if not exactly one file is found.
+//
+// If it isn't found then it returns the error ErrorNodeNotFound
 func (f *Folder) GetFile(name string) (*File, *http.Response, error) {
 	n, resp, err := f.GetNode(name)
 	if err != nil {
@@ -254,9 +348,27 @@ func (f *Folder) GetFile(name string) (*File, *http.Response, error) {
 	return res, resp, nil
 }
 
+var escapeForFilterRe = regexp.MustCompile(`([+\-&|!(){}\[\]^'"~*?:\\ ])`)
+
+// EscapeForFilter escapes an abitrary string for use as a filter
+// query parameter.
+//
+// Special characters that are part of the query syntax will be
+// escaped. The list of special characters are:
+//
+// + - & | ! ( ) { } [ ] ^ ' " ~ * ? : \
+//
+// Additionally, space will be escaped. Characters are escaped by
+// using \ before the character.
+func EscapeForFilter(s string) string {
+	return escapeForFilterRe.ReplaceAllString(s, `\$1`)
+}
+
 // Gets the node by name. It is an error if not exactly one node is found.
+//
+// If it isn't found then it returns the error ErrorNodeNotFound
 func (f *Folder) GetNode(name string) (*Node, *http.Response, error) {
-	filter := fmt.Sprintf("parents:\"%v\" AND name:\"%s\"", *f.Id, name)
+	filter := fmt.Sprintf(`parents:"%v" AND name:"%s"`, *f.Id, EscapeForFilter(name))
 	opts := &NodeListOptions{Filters: filter}
 
 	nodes, resp, err := f.service.GetNodes(opts)
@@ -265,8 +377,7 @@ func (f *Folder) GetNode(name string) (*Node, *http.Response, error) {
 	}
 
 	if len(nodes) < 1 {
-		err := errors.New(fmt.Sprintf("No node '%s' found", name))
-		return nil, resp, err
+		return nil, resp, ErrorNodeNotFound
 	}
 	if len(nodes) > 1 {
 		err := errors.New(fmt.Sprintf("Too many nodes '%s' found (%v)", name, len(nodes)))
@@ -308,14 +419,9 @@ func (f *Folder) WalkNodes(names ...string) (*Node, []*http.Response, error) {
 	return nl, resps, nil
 }
 
-// Upload stores the content of file at path as name on the Amazon Cloud Drive.
+// Put stores the data read from in at path as name on the Amazon Cloud Drive.
 // Errors if the file already exists on the drive.
-func (f *Folder) Upload(path, name string) (*File, *http.Response, error) {
-	in, err := os.Open(path)
-	if err != nil {
-		return nil, nil, err
-	}
-
+func (service *NodesService) putOrOverwrite(in io.Reader, httpVerb, url, name, metadata string) (*File, *http.Response, error) {
 	bodyReader, bodyWriter := io.Pipe()
 	writer := multipart.NewWriter(bodyWriter)
 	contentType := writer.FormDataContentType()
@@ -323,15 +429,17 @@ func (f *Folder) Upload(path, name string) (*File, *http.Response, error) {
 	errChan := make(chan error, 1)
 	go func() {
 		defer bodyWriter.Close()
-		defer in.Close()
+		var err error
 
-		err = writer.WriteField("metadata", `{"name":"`+name+`","kind":"FILE","parents":["`+*f.Id+`"]}`)
-		if err != nil {
-			errChan <- err
-			return
+		if metadata != "" {
+			err = writer.WriteField("metadata", string(metadata))
+			if err != nil {
+				errChan <- err
+				return
+			}
 		}
 
-		part, err := writer.CreateFormFile("content", filepath.Base(path))
+		part, err := writer.CreateFormFile("content", name)
 		if err != nil {
 			errChan <- err
 			return
@@ -343,15 +451,15 @@ func (f *Folder) Upload(path, name string) (*File, *http.Response, error) {
 		errChan <- writer.Close()
 	}()
 
-	req, err := f.service.client.NewContentRequest("POST", "nodes?suppress=deduplication", bodyReader)
+	req, err := service.client.NewContentRequest(httpVerb, url, bodyReader)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	req.Header.Add("Content-Type", contentType)
 
-	file := &File{&Node{service: f.service}}
-	resp, err := f.service.client.Do(req, file)
+	file := &File{&Node{service: service}}
+	resp, err := service.client.Do(req, file)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -362,6 +470,38 @@ func (f *Folder) Upload(path, name string) (*File, *http.Response, error) {
 	}
 
 	return file, resp, err
+}
+
+// Put stores the data read from in at path as name on the Amazon Cloud Drive.
+// Errors if the file already exists on the drive.
+func (f *Folder) Put(in io.Reader, name string) (*File, *http.Response, error) {
+	metadata := createNode{
+		Name:    name,
+		Kind:    "FILE",
+		Parents: []string{*f.Id},
+	}
+	metadataJson, err := json.Marshal(&metadata)
+	if err != nil {
+		return nil, nil, err
+	}
+	return f.service.putOrOverwrite(in, "POST", "nodes?suppress=deduplication", name, string(metadataJson))
+}
+
+// Overwrite updates the file contents from in
+func (f *File) Overwrite(in io.Reader) (*File, *http.Response, error) {
+	url := fmt.Sprintf("nodes/%s/content", *f.Id)
+	return f.service.putOrOverwrite(in, "PUT", url, *f.Name, "")
+}
+
+// Upload stores the content of file at path as name on the Amazon Cloud Drive.
+// Errors if the file already exists on the drive.
+func (f *Folder) Upload(path, name string) (*File, *http.Response, error) {
+	in, err := os.Open(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer in.Close()
+	return f.Put(in, name)
 }
 
 // NodeListOptions holds the options when getting a list of nodes, such as the filter,

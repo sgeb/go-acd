@@ -7,6 +7,7 @@ package acd
 
 import (
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -16,6 +17,45 @@ import (
 // See: https://developer.amazon.com/public/apis/experience/cloud-drive/content/account
 type AccountService struct {
 	client *Client
+}
+
+// AccountEndpoints represents information about the current customer's endpoints
+type AccountEndpoints struct {
+	CustomerExists bool   `json:"customerExists"`
+	ContentURL     string `json:"contentUrl"`
+	MetadataURL    string `json:"metadataUrl"`
+}
+
+// GetEndpoints retrives the current endpoints for this customer
+//
+// It also updates the endpoints in the client
+func (s *AccountService) GetEndpoints() (*AccountEndpoints, *http.Response, error) {
+	req, err := s.client.NewMetadataRequest("GET", "account/endpoint", nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	endpoints := &AccountEndpoints{}
+	resp, err := s.client.Do(req, endpoints)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	// Update the client endpoints
+	if endpoints.MetadataURL != "" {
+		u, err := url.Parse(endpoints.MetadataURL)
+		if err == nil {
+			s.client.MetadataURL = u
+		}
+	}
+	if endpoints.ContentURL != "" {
+		u, err := url.Parse(endpoints.ContentURL)
+		if err == nil {
+			s.client.ContentURL = u
+		}
+	}
+
+	return endpoints, resp, err
 }
 
 // AccountInfo represents information about an Amazon Cloud Drive account.
